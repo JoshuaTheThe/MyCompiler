@@ -24,8 +24,6 @@ node_t *parse_keyword(token_stream_t *stream)
         {
                 lexer_expect(stream, LEXER_TOKEN_IDENTIFIER);
                 lexer_expect(stream, LEXER_TOKEN_SEMICOLON);
-                symbol_t *sym = sym_create(token.Identifier);
-                sym->offset   = 0 - (long)sym_table()->count * 8;
                 node_t *node  = new_node(token, NODE_DECLARATION);
                 return node;
         }
