@@ -1,6 +1,6 @@
 
 #include "lexer.h"
-#include <error.h>
+#include "error.h"
 
 char lexer_getch(token_stream_t *fil)
 {
@@ -165,7 +165,7 @@ void lexer_index_lines(token_stream_t *fil)
         }
 }
 
-token_t Lexer_Identifier(token_stream_t *fil, char First)
+token_t lexer_identifier(token_stream_t *fil, char First)
 {
         token_t Token      = {0};
         char Character   = 0;
@@ -359,25 +359,25 @@ token_t *lexer_consume(token_stream_t *stream)
 
 token_t *lexer_expect(token_stream_t *stream, token_kind_t Class)
 {
-        token_t **Token = &stream->Current;
+        token_t *Token = stream->Current;
         if (lexer_consume(stream)->Class != Class)
         {
-                comperror(stream, **Token, "Expected token of class %ld when provided %ld", Class, (*Token)->Class);
+                comperror(stream, *Token, "Expected token of class %ld when provided %ld", Class, Token->Class);
         }
 
-        return *Token;
+        return Token;
 }
 
 bool lexer_accept(token_stream_t *stream, token_kind_t Class)
 {
         token_t **Token = &stream->Current;
-        if (lexer_consume(stream)->Class != Class)
+        if ((*Token)->Class == Class)
         {
-                lexer_unconsume(stream);
-                return false;
+                lexer_consume(stream);
+                return true;
         }
 
-        return true;
+        return false;
 }
 
 token_t *lexer_unconsume(token_stream_t *stream)
@@ -397,6 +397,11 @@ token_t lexer_next(token_stream_t *fil)
         // Skip WhiteSpace
         while ((Character = lexer_getch(fil)) != EOF && isspace(Character))
             ;
+        token_t none = {0};
+        none.File = fil;
+        none.Column = fil->Column;
+        none.LineOffset = fil->LineOffset;
+        none.Line = fil->Line;
         if (Character == '/')
         {
                 Saved = lexer_getch(fil);
@@ -418,7 +423,7 @@ token_t lexer_next(token_stream_t *fil)
                         }
                         if (Character == EOF)
                         {
-                                return (token_t){0};
+                                return none;
                         }
                         return lexer_next(fil);
                 }
@@ -433,7 +438,7 @@ token_t lexer_next(token_stream_t *fil)
         if (isdigit(Character))
                 return lexer_number(fil, Character);
         else if (isalpha(Character) || Character == '_' || isalnum(Character))
-                return Lexer_Identifier(fil, Character);
+                return lexer_identifier(fil, Character);
         else if (Character == '\'' || Character == '"')
                 return lexer_character(fil, Character);
         else
@@ -457,5 +462,5 @@ token_t lexer_next(token_stream_t *fil)
                 }
                 return Tok;
         }
-        return (token_t){0};
+        return none;
 }

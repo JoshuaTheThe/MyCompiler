@@ -3,6 +3,7 @@
 #include "lexer.h"
 #include "error.h"
 #include "sym.h"
+#include <error.h>
 
 node_t *new_node(token_t token, node_kind_t kind)
 {
@@ -227,7 +228,7 @@ node_t *parse_primary(token_stream_t *stream)
                         break;
 
                 default:
-                        comperror(stream, token, "unexpected token");
+                        comperror(stream, token, "expected primary");
                         node = new_node(token, NODE_INTEGER);
                         break;
         }

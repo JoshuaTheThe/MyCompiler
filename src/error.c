@@ -11,15 +11,11 @@ void comperror(token_stream_t *File, token_t ReferenceToken, const char *const f
         va_start(args, fmt);
         vsnprintf(FormattedMessage, sizeof(FormattedMessage), fmt, args);
         va_end(args);
-        if (ReferenceToken.Class != LEXER_TOKEN_EOF)
-                snprintf(ErrorBuffer, sizeof(ErrorBuffer), "%s:%ld:%ld: error: %s\n",
-                         File->Identifier, ReferenceToken.Line, ReferenceToken.Column,
-                         FormattedMessage);
-        else
-                snprintf(ErrorBuffer, sizeof(ErrorBuffer), "error: %s\n", FormattedMessage);
+        snprintf(ErrorBuffer, sizeof(ErrorBuffer), "%s:%ld:%ld: error: %s\n",
+                File->Identifier, ReferenceToken.Line, ReferenceToken.Column,
+                FormattedMessage);
         printf("%s", ErrorBuffer);
-        if (ReferenceToken.Class != LEXER_TOKEN_EOF &&
-            ReferenceToken.Line < File->LineCount)
+        if (ReferenceToken.Line < File->LineCount)
         {
                 char Character = 0;
                 fseek(File->fp, File->LineOffsets[ReferenceToken.Line - 1], SEEK_SET);
@@ -30,7 +26,7 @@ void comperror(token_stream_t *File, token_t ReferenceToken, const char *const f
                         Character = fgetc(File->fp);
                 }
 
-                printf("\n%*s^\n", ReferenceToken.Column - 1, "");
+                printf("\n%*s^\n", (int)ReferenceToken.Column - 1, "");
         }
 
         exit(1);
