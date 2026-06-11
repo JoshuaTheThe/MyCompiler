@@ -15,7 +15,7 @@ void comperror(token_stream_t *File, token_t ReferenceToken, const char *const f
                 File->Identifier, ReferenceToken.Line, ReferenceToken.Column,
                 FormattedMessage);
         printf("%s", ErrorBuffer);
-        if (ReferenceToken.Line < File->LineCount)
+        if (ReferenceToken.Line <= File->LineCount)
         {
                 char Character = 0;
                 fseek(File->fp, File->LineOffsets[ReferenceToken.Line - 1], SEEK_SET);
