@@ -192,7 +192,6 @@ token_t lexer_operator(token_stream_t *fil, char First)
                 "==",
                 "&&",
                 "||",
-                "^^",
                 "+=",
                 "-=",
                 "*=",

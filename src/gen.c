@@ -7,8 +7,40 @@
 #include <stdlib.h>
 #include <string.h>
 
+const char *byte_reg_name[REGISTER_COUNT] = {
+        "bl",
+        "cl",
+        "r8b",
+        "r9b",
+        "r10b",
+        "r11b",
+        "r12b",
+        "r13b",
+};
+
+const char *word_reg_name[REGISTER_COUNT] = {
+        "bx",
+        "cx",
+        "r8w",
+        "r9w",
+        "r10w",
+        "r11w",
+        "r12w",
+        "r13w",
+};
+
+const char *dword_reg_name[REGISTER_COUNT] = {
+        "ebx",
+        "ecx",
+        "r8d",
+        "r9d",
+        "r10d",
+        "r11d",
+        "r12d",
+        "r13d",
+};
+
 const char *qword_reg_name[REGISTER_COUNT] = {
-        "rax",
         "rbx",
         "rcx",
         "r8",
@@ -16,6 +48,7 @@ const char *qword_reg_name[REGISTER_COUNT] = {
         "r10",
         "r11",
         "r12",
+        "r13",
 };
 
 size_t gen_pop(gen_t *const gen)
@@ -125,7 +158,7 @@ void display_ast(node_t *root, FILE *file, size_t depth) // dump info for now
         display_ast(root->next, file, depth);
 }
 
-static size_t node_to_i(node_t *node)
+static long node_to_i(node_t *node)
 {
         if (node->kind != NODE_INTEGER)
                 return 0;
@@ -145,6 +178,132 @@ void gen_binop(gen_t *gen, node_t *node)
 
         switch (node->token.Class)
         {
+                case LEXER_TOKEN_NOTEQ:
+                {
+                        if (integer)
+                        {
+                                long lhs = node_to_i(node->left);
+                                long rhs = node_to_i(node->right);
+                                size_t res = gen_alloc_reg(gen);
+                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs!=rhs), qword_reg_name[res]);
+                                gen_push(gen, res);
+                        }
+                        else
+                        {
+                                size_t rhs = gen_pop(gen);
+                                size_t lhs = gen_pop(gen);
+                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
+                                fprintf(gen->output, "\tsetne %%%s\n", byte_reg_name[lhs]);
+                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
+                                gen_push(gen, lhs);
+                        }
+                        break;
+                }
+                case LEXER_TOKEN_EQUALS:
+                {
+                        if (integer)
+                        {
+                                long lhs = node_to_i(node->left);
+                                long rhs = node_to_i(node->right);
+                                size_t res = gen_alloc_reg(gen);
+                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs==rhs), qword_reg_name[res]);
+                                gen_push(gen, res);
+                        }
+                        else
+                        {
+                                size_t rhs = gen_pop(gen);
+                                size_t lhs = gen_pop(gen);
+                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
+                                fprintf(gen->output, "\tsete %%%s\n", byte_reg_name[lhs]);
+                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
+                                gen_push(gen, lhs);
+                        }
+                        break;
+                }
+                case LEXER_TOKEN_LESS:
+                {
+                        if (integer)
+                        {
+                                long lhs = node_to_i(node->left);
+                                long rhs = node_to_i(node->right);
+                                size_t res = gen_alloc_reg(gen);
+                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs<rhs), qword_reg_name[res]);
+                                gen_push(gen, res);
+                        }
+                        else
+                        {
+                                size_t rhs = gen_pop(gen);
+                                size_t lhs = gen_pop(gen);
+                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
+                                fprintf(gen->output, "\tsetl %%%s\n", byte_reg_name[lhs]);
+                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
+                                gen_push(gen, lhs);
+                        }
+                        break;
+                }
+                case LEXER_TOKEN_GREATER:
+                {
+                        if (integer)
+                        {
+                                long lhs = node_to_i(node->left);
+                                long rhs = node_to_i(node->right);
+                                size_t res = gen_alloc_reg(gen);
+                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs>rhs), qword_reg_name[res]);
+                                gen_push(gen, res);
+                        }
+                        else
+                        {
+                                size_t rhs = gen_pop(gen);
+                                size_t lhs = gen_pop(gen);
+                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
+                                fprintf(gen->output, "\tsetg %%%s\n", byte_reg_name[lhs]);
+                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
+                                gen_push(gen, lhs);
+                        }
+                        break;
+                }
+                case LEXER_TOKEN_LESSEQ:
+                {
+                        if (integer)
+                        {
+                                long lhs = node_to_i(node->left);
+                                long rhs = node_to_i(node->right);
+                                size_t res = gen_alloc_reg(gen);
+                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs<=rhs), qword_reg_name[res]);
+                                gen_push(gen, res);
+                        }
+                        else
+                        {
+                                size_t rhs = gen_pop(gen);
+                                size_t lhs = gen_pop(gen);
+                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
+                                fprintf(gen->output, "\tsetle %%%s\n", byte_reg_name[lhs]);
+                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
+                                gen_push(gen, lhs);
+                        }
+                        break;
+                }
+                case LEXER_TOKEN_GREATEREQ:
+                {
+                        if (integer)
+                        {
+                                long lhs = node_to_i(node->left);
+                                long rhs = node_to_i(node->right);
+                                size_t res = gen_alloc_reg(gen);
+                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs>=rhs), qword_reg_name[res]);
+                                gen_push(gen, res);
+                        }
+                        else
+                        {
+                                size_t rhs = gen_pop(gen);
+                                size_t lhs = gen_pop(gen);
+                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
+                                fprintf(gen->output, "\tsetge %%%s\n", byte_reg_name[lhs]);
+                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
+                                gen_push(gen, lhs);
+                        }
+                        break;
+                }
                 case LEXER_TOKEN_PLUS:
                 {
                         if (integer)
@@ -295,6 +454,7 @@ void gen_to_file(token_stream_t *stream, node_t *root, FILE *file)
         gen.output = file;
         fprintf(file, "2:\n");
         gen_node(&gen, root);
+        fprintf(file, "\tmovq %%%s, %%rax\n", qword_reg_name[gen_pop(&gen)]);
         fprintf(file, "\tretq\n");
         while (gen.sym_scope)
         {
