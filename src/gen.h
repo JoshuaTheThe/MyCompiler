@@ -6,7 +6,7 @@
 #include "sym.h"
 #include <stddef.h>
 
-#define REGISTER_COUNT (8)
+#define REGISTER_COUNT (6)
 #define REGISTER_STACK (32)
 
 typedef struct
@@ -23,6 +23,7 @@ typedef struct
         FILE           *output;
         bool            lea_over_deref;
         size_t          label;
+        bool            tail_is_return;
 } gen_t;
 
 void gen_to_file(token_stream_t *stream, node_t *root, FILE *file);

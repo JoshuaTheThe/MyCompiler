@@ -8,17 +8,19 @@ _start:
 	movq $60, %rax
 	syscall
 1:	jmp 1b
+__ret:
+	movq %rbp, %rsp
+	popq %rbp
+	retq
 main:
 	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
-	lea *main, %rbx
-	call %rbx
-	mov %rax, %rbx
+	movq $32, %rbx
+	subq $8, %rsp
+	mov %rbx, -8(%rbp)
+	mov -8(%rbp), %rbx
 	movq %rbx, %rax
-	movq %rbp, %rsp
-	popq %rbp
-	retq
-	movq %rbp, %rsp
-	popq %rbp
-	retq
+	jmp __ret
+	.section .bss
+k: .space 8

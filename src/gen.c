@@ -14,48 +14,76 @@ const type_t type_integer = {
         .levels      = {{0}},
 };
 
-const char *byte_reg_name[REGISTER_COUNT] = {
-        "bl",
+const char *byte_arg_reg_name[6] = {
+        "dil",
+        "sil",
+        "dl",
         "cl",
         "r8b",
         "r9b",
-        "r10b",
+};
+
+const char *word_arg_reg_name[6] = {
+        "di",
+        "si",
+        "dx",
+        "cx",
+        "r8w",
+        "r9w",
+};
+
+const char *dword_arg_reg_name[6] = {
+        "edi",
+        "esi",
+        "dx",
+        "cx",
+        "r8w",
+        "r9w",
+};
+
+const char *qword_arg_reg_name[6] = {
+        "rdi",
+        "rsi",
+        "rdx",
+        "rcx",
+        "r8",
+        "r9",
+};
+
+const char *byte_reg_name[REGISTER_COUNT] = {
+        "bl",
         "r11b",
         "r12b",
         "r13b",
+        "r14b",
+        "r15b",
 };
 
 const char *word_reg_name[REGISTER_COUNT] = {
         "bx",
-        "cx",
-        "r8w",
-        "r9w",
-        "r10w",
         "r11w",
         "r12w",
         "r13w",
+        "r14w",
+        "r15w",
 };
 
 const char *dword_reg_name[REGISTER_COUNT] = {
         "ebx",
-        "ecx",
-        "r8d",
-        "r9d",
-        "r10d",
         "r11d",
         "r12d",
         "r13d",
+        "r14d",
+        "r15d",
 };
 
 const char *qword_reg_name[REGISTER_COUNT] = {
         "rbx",
-        "rcx",
-        "r8",
-        "r9",
-        "r10",
         "r11",
         "r12",
         "r13",
+        "r14",
+        "r15",
 };
 
 
@@ -293,6 +321,10 @@ void gen_init(FILE *file)
         fprintf(file, "\tmovq $60, %%rax\n");
         fprintf(file, "\tsyscall\n");
         fprintf(file, "1:\tjmp 1b\n");
+        fprintf(file, "__ret:\n");
+        fprintf(file, "\tmovq %%rbp, %%rsp\n");
+        fprintf(file, "\tpopq %%rbp\n");
+        fprintf(file, "\tretq\n");
 }
 
 void display_ast(node_t *root, FILE *file, size_t depth) // dump info for now
@@ -385,7 +417,10 @@ void gen_node(gen_t *gen, node_t *node)
                 return;
         gen->node = node;
         if (node->stmt)
+        {
                 gen_newexpr(gen);
+                gen->tail_is_return = false;
+        }
         switch (node->kind)
         {
                 case NODE_FUNCTION:
@@ -403,9 +438,8 @@ void gen_node(gen_t *gen, node_t *node)
                         symbol_t *sym = sym_create(&gen->sym_table[gen->sym_scope], node->token.Identifier, type);
                         sym->reference_by_name = true;
                         gen_node(gen, node->left);
-                        fprintf(gen->output, "\tmovq %%rbp, %%rsp\n");
-                        fprintf(gen->output, "\tpopq %%rbp\n");
-                        fprintf(gen->output, "\tretq\n");
+                        if (!gen->tail_is_return)
+                                fprintf(gen->output, "\tjmp __ret\n");
                         break;
                 }
                 case NODE_IF:
@@ -441,10 +475,10 @@ void gen_node(gen_t *gen, node_t *node)
                         gen_set_type(gen, reg, sym->type);
                         if (!sym->reference_by_name)
                                 if (!gen->lea_over_deref)
-                                        fprintf(gen->output, "\tmov -%ld(%%rbp), %%%s\n", sym->offset, (*reg_names)[reg]);
+                                        fprintf(gen->output, "\tmov %ld(%%rbp), %%%s\n", sym->offset, (*reg_names)[reg]);
                                 else
                                 {
-                                        fprintf(gen->output, "\tlea -%ld(%%rbp), %%%s\n", sym->offset, (*reg_names)[reg]);
+                                        fprintf(gen->output, "\tlea %ld(%%rbp), %%%s\n", sym->offset, (*reg_names)[reg]);
                                 }
                         else
                                 fprintf(gen->output, "\tlea *%s, %%%s\n", sym->name, (*reg_names)[reg]); // always lea for function
@@ -458,9 +492,8 @@ void gen_node(gen_t *gen, node_t *node)
                         // TODO! function return type check
                         const char *(*reg_names)[REGISTER_COUNT] = gen_find_names_for(8);
                         fprintf(gen->output, "\tmovq %%%s, %%rax\n", (*reg_names)[result]);
-                        fprintf(gen->output, "\tmovq %%rbp, %%rsp\n");
-                        fprintf(gen->output, "\tpopq %%rbp\n");
-                        fprintf(gen->output, "\tretq\n");
+                        fprintf(gen->output, "\tjmp __ret\n");
+                        gen->tail_is_return = true;
                         break;
                 }
 
@@ -486,15 +519,20 @@ void gen_node(gen_t *gen, node_t *node)
 
                 case NODE_DECLARATION:
                 {
-                        gen_node(gen, node->right);
-                        size_t value = gen_pop(gen);
-                        size_t size  = gen_sizeof(gen->reg_types[value]);
+
+                        type_t type  = gen_node_to_type(node->left);
+                        size_t size  = gen_sizeof(type);
                         const char *(*reg_names)[REGISTER_COUNT] = gen_find_names_for(size);
-                        symbol_t *sym = sym_create(&gen->sym_table[gen->sym_scope], node->token.Identifier, gen->reg_types[value]);
+                        symbol_t *sym = sym_create(&gen->sym_table[gen->sym_scope], node->token.Identifier, type);
                         sym->reference_by_name = gen->sym_scope == 0;
-                        fprintf(gen->output, "\tsubq $%ld, %%rsp\n", size);
-                        fprintf(gen->output, "\tmov %%%s, -%ld(%%rbp)\n", (*reg_names)[value], sym->offset);
-                        gen_push(gen, value);
+                        if (gen->sym_scope > 0)
+                        {
+                                gen_node(gen, node->right);
+                                size_t value = gen_expect(gen, type);
+                                fprintf(gen->output, "\tsubq $%ld, %%rsp\n", size);
+                                fprintf(gen->output, "\tmov %%%s, %ld(%%rbp)\n", (*reg_names)[value], sym->offset);
+                                gen_push(gen, value);
+                        }
                         break;
                 }
 
@@ -560,6 +598,16 @@ void gen_to_file(token_stream_t *stream, node_t *root, FILE *file)
         gen_node(&gen, root);
         do
         {
+                if (gen.sym_scope == 0)
+                {
+                        fprintf(gen.output, "\t.section .bss\n");
+                        for (size_t i = 0; i < gen.sym_table[0].count; ++i)
+                        {
+                                if (gen.sym_table[0].items[i].type.levels[0].kind != LEVEL_FUNCTION)
+                                        fprintf(gen.output, "%s: .space %ld\n", gen.sym_table[0].items[i].name, gen_sizeof(gen.sym_table[0].items[i].type));
+                        }
+                }
+
                 sym_clean(&gen.sym_table[gen.sym_scope]);
                 if (gen.sym_scope > 0)
                         gen.sym_scope -= 1;
@@ -576,6 +624,7 @@ void gen_enter(gen_t *gen)
 
         gen->sym_scope++;
         sym_clean(&gen->sym_table[gen->sym_scope]);
+        gen->sym_table[gen->sym_scope].currentoffset = -8;
 }
 
 void gen_leave(gen_t *gen)

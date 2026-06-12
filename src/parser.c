@@ -88,11 +88,11 @@ node_t *parse_stmt(token_stream_t *stream)
                 default:
                 expr:
                         node = parse_expr(stream);
-                        node->stmt = true;
                         lexer_expect(stream, LEXER_TOKEN_SEMICOLON);
                         break;
         }
 
+        node->stmt = true;
         return node;
 }
 
@@ -123,15 +123,26 @@ node_t *parse_keyword(token_stream_t *stream)
         if (stream->Current &&
             !strncmp(stream->Current->Identifier, "let", 4))
         {
-                // type information is inferred
                 lexer_expect(stream, LEXER_TOKEN_IDENTIFIER); // let
                 token_t name = *lexer_expect(stream, LEXER_TOKEN_IDENTIFIER); // name
-                lexer_expect(stream, LEXER_TOKEN_EQUAL);      // initial value
-                node_t *initial = parse_expr(stream);
-                lexer_expect(stream, LEXER_TOKEN_SEMICOLON);
+                lexer_expect(stream, LEXER_TOKEN_COLON);
+                node_t *type = NULL;
+                if (!parse_type(stream, &type))
+                {
+                        comperror(stream, *stream->Current, "no type provided for declaration");
+                }
+
                 node_t *node  = new_node(token, NODE_DECLARATION);
+                if (stream->Current->Class == LEXER_TOKEN_EQUAL)
+                {
+                        lexer_expect(stream, LEXER_TOKEN_EQUAL);      // initial value
+                        node_t *initial = parse_expr(stream);
+                        node->right     = initial;
+                }
+
+                lexer_expect(stream, LEXER_TOKEN_SEMICOLON);
                 node->token   = name;
-                node->right   = initial;
+                node->left    = type;
                 return node;
         }
         else if (stream->Current &&

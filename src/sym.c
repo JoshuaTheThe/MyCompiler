@@ -29,7 +29,7 @@ symbol_t *sym_create(symbol_table_t *table, char name[static IDENTIFIER_SIZE], t
         da_append(table, new);
         table->items[table->count - 1].offset = table->currentoffset;
         table->items[table->count - 1].type   = type;
-        table->currentoffset += gen_sizeof(type);
+        table->currentoffset -= gen_sizeof(type);
         return &table->items[table->count-1];
 }
 
