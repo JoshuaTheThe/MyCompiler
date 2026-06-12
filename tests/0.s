@@ -8,10 +8,10 @@ _start:
 	syscall
 1:	jmp 1b
 2:
-	movq $1, %rbx
-	movq $1, %rcx
-	cmpq %rcx, %rbx
-	setne %bl
-	movzx %bl, %rbx
+	movq $800, %rbx
+	movq $0, %rcx
+	shl $2, %rcx
+	add %rcx, %rbx
+	movq (%rbx), %rbx
 	movq %rbx, %rax
 	retq

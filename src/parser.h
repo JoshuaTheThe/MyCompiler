@@ -21,6 +21,7 @@ typedef enum
         NODE_FUNCTION,
         NODE_GROUP,
         NODE_MULTIEXPR,
+        NODE_CAST,
 } node_kind_t;
 
 typedef struct node
@@ -33,6 +34,11 @@ typedef struct node
         struct node *right;
 
         struct node *next;
+
+        struct
+        {
+                size_t size;
+        } priv;
 } node_t;
 
 node_t *new_node(token_t token, node_kind_t kind);

@@ -177,22 +177,16 @@ node_t *parse_multiplicitive(token_stream_t *stream)
 
 node_t *parse_prefix(token_stream_t *stream)
 {
-        size_t deref = 0;
-        while (lexer_accept(stream, LEXER_TOKEN_ASTERISK))
-                deref++;
-
-        node_t *node = parse_primary(stream);
-
-        while (deref--)
+        token_t tok = *stream->Current;
+        if (lexer_accept(stream, LEXER_TOKEN_ASTERISK))
         {
-                token_t tok = {.Class = LEXER_TOKEN_ASTERISK};
                 node_t *deref_node = new_node(tok, NODE_PREFIX);
-                deref_node->left = node;
-                deref_node->right = NULL;
-                node = deref_node;
+                deref_node->left   = parse_prefix(stream);
+                deref_node->right  = NULL;
+                return deref_node;
         }
 
-        return node;
+        return parse_suffix(stream);
 }
 
 node_t *parse_primary(token_stream_t *stream)
@@ -214,6 +208,26 @@ node_t *parse_primary(token_stream_t *stream)
 
                 case LEXER_TOKEN_LPAREN:
                 {
+                        // cast
+                        if (stream->Current->Class == LEXER_TOKEN_IDENTIFIER &&
+                           (!strncmp(stream->Current->Identifier, "i64", 4) ||
+                            !strncmp(stream->Current->Identifier, "i32", 4) ||
+                            !strncmp(stream->Current->Identifier, "i16", 4) ||
+                            !strncmp(stream->Current->Identifier, "i8", 4)))
+                        {
+                                token_t type = *lexer_consume(stream);
+                                size_t depth = 0;
+                                while (lexer_accept(stream, LEXER_TOKEN_ASTERISK))
+                                        depth++;
+                                lexer_expect(stream, LEXER_TOKEN_RPAREN);
+                                node_t *cast    = new_node(type, NODE_CAST);
+                                cast->left      = parse_prefix(stream);
+                                cast->priv.size = depth;
+                                node = cast;
+                                break;
+                        }
+
+                        // group
                         node = parse_expr(stream);
                         lexer_expect(stream, LEXER_TOKEN_RPAREN);
                         node_t *group = new_node(token, NODE_GROUP);
@@ -232,37 +246,34 @@ node_t *parse_primary(token_stream_t *stream)
                         break;
         }
 
-        node_t *suffix = parse_suffix(stream);
-        if (suffix)
-        {
-                suffix->left = node;
-                node = suffix;
-        }
-
         return node;
 }
 
 node_t *parse_suffix(token_stream_t *stream)
 {
-        if (lexer_accept(stream, LEXER_TOKEN_LSBRACKET))
+        // syntax sugar for *(BASE+OFF)
+        node_t *base = parse_primary(stream);
+
+        // x[y] => *(x+y)
+        while (lexer_accept(stream, LEXER_TOKEN_LSBRACKET))
         {
                 token_t bracket = *stream->Current->Prev;
                 node_t *index = parse_expr(stream);
                 lexer_expect(stream, LEXER_TOKEN_RSBRACKET);
 
-                node_t *node = new_node(bracket, NODE_SUFFIX);
-                node->right = index;
+                node_t *dereference = new_node(bracket, NODE_PREFIX);
+                dereference->token.Class = LEXER_TOKEN_ASTERISK;
 
-                node_t *next = parse_suffix(stream);
-                if (next)
-                {
-                        node->left = next;
-                }
-
-                return node;
+                node_t *group            = new_node(bracket, NODE_GROUP);
+                group->left              = new_node(bracket, NODE_BINOP);
+                group->left->token.Class = LEXER_TOKEN_PLUS;
+                group->left->left        = base;
+                group->left->right       = index;
+                dereference->left        = group;
+                base = dereference;
         }
 
-        return NULL;
+        return base;
 }
 
 node_t *parse_expr(token_stream_t *stream)

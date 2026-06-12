@@ -3,9 +3,16 @@
 #include "lexer.h"
 #include "sym.h"
 #include "parser.h"
+#include "binop.h"
 #include "error.h"
 #include <stdlib.h>
 #include <string.h>
+
+const type_t type_integer = {
+        .base        = BASETYPE_INT64,
+        .level_count = 0,
+        .levels      = {{0}},
+};
 
 const char *byte_reg_name[REGISTER_COUNT] = {
         "bl",
@@ -50,6 +57,116 @@ const char *qword_reg_name[REGISTER_COUNT] = {
         "r12",
         "r13",
 };
+
+
+const char *(*gen_find_names_for(size_t size))[REGISTER_COUNT]
+{
+        switch (size)
+        {
+                case 8:
+                        return &qword_reg_name;
+                case 4:
+                        return &dword_reg_name;
+                case 2:
+                        return &word_reg_name;
+                case 1:
+                        return &byte_reg_name;
+                default:
+                        return NULL;
+        }
+}
+
+size_t gen_sizeof(type_t type)
+{
+        static const size_t sizes[_BASETYPE_CNT] = {
+                0,8,4,2,1
+        };
+
+        if (type.base >= _BASETYPE_CNT)
+                return 0; // UB for now
+        if (type.level_count > 0)
+                return sizes[1]; // sizeof(highest_word) or sizeof(uintptr)
+        return sizes[type.base];
+}
+
+type_t gen_deref(type_t type)
+{
+        if (!(type.base != BASETYPE_NONE && type.level_count > 0 && type.levels[0].kind == LEVEL_PTR))
+        {
+                return (type_t){0};
+        }
+        if (type.levels[0].depth_or_length > 0)
+            type.levels[0].depth_or_length -= 1;
+        if (type.levels[0].depth_or_length == 0)
+        {
+                for (size_t i = 1; i < sizeof(type.levels) / sizeof(*type.levels); ++i)
+                {
+                        type.levels[i - 1] = type.levels[i];
+                }
+
+                type.levels[sizeof(type.levels) / sizeof(*type.levels) - 1] = (type_level_t){0};
+                type.level_count -= 1;
+        }
+
+        return type;
+}
+
+size_t gen_sizeof_deref(type_t type)
+{
+        return gen_sizeof(gen_deref(type));
+}
+
+size_t gen_expect_a_or_b(gen_t *gen, type_t a, type_t b)
+{
+        size_t index = gen_pop(gen); // wont return on fail, no error check needed
+        if (memcmp(&gen->reg_types[index], &a, sizeof(type_t)) && memcmp(&gen->reg_types[index], &b, sizeof(type_t)))
+        {
+                comperror(gen->stream, gen->node->token, "unexpected type, expected {%d, %d} or {%d, %d} but got {%d, %d}", a.base, a.level_count, b.base, b.level_count, gen->reg_types[index].base, gen->reg_types[index].level_count);
+        }
+        return index;
+}
+
+void gen_check_a_or_b(gen_t *gen, type_t a, type_t b, type_t t)
+{
+        if (memcmp(&t, &a, sizeof(type_t)) && memcmp(&t, &b, sizeof(type_t)))
+        {
+                comperror(gen->stream, gen->node->token, "unexpected type, expected {%d, %d} or {%d, %d} but got {%d, %d}", a.base, a.level_count, b.base, b.level_count, t.base, t.level_count);
+        }
+}
+
+void gen_check(gen_t *gen, type_t a, type_t t)
+{
+        if (memcmp(&t, &a, sizeof(type_t)))
+        {
+                comperror(gen->stream, gen->node->token, "unexpected type, expected {%d, %d} but got {%d, %d}", a.base, a.level_count, t.base, t.level_count);
+        }
+}
+
+size_t gen_expect(gen_t *gen, type_t type)
+{
+        size_t index = gen_pop(gen); // wont return on fail, no error check needed
+        if (memcmp(&gen->reg_types[index], &type, sizeof(type_t)))
+        {
+                comperror(gen->stream, gen->node->token, "unexpected type, expected {%d, %d} but got {%d, %d}", type.base, type.level_count, gen->reg_types[index].base, gen->reg_types[index].level_count);
+        }
+        return index;
+}
+
+void gen_set_type(gen_t *gen, size_t index, type_t type)
+{
+        if (!gen || index >= REGISTER_COUNT)
+                comperror(gen->stream, gen->node->token, "could not free register %ld (OutOfBounds=%s, GeneratorExists=%s)",
+                          index, index >= REGISTER_COUNT ? "false" : "true", gen!=NULL ? "true" : "false");
+        gen->reg_types[index] = type;
+}
+
+type_t gen_get_type(gen_t *gen, size_t index)
+{
+        if (!gen || index >= REGISTER_COUNT)
+                comperror(gen->stream, gen->node->token, "could not free register %ld (OutOfBounds=%s, GeneratorExists=%s)",
+                          index, index >= REGISTER_COUNT ? "false" : "true", gen!=NULL ? "true" : "false");
+        return gen->reg_types[index];
+}
 
 size_t gen_pop(gen_t *const gen)
 {
@@ -158,260 +275,31 @@ void display_ast(node_t *root, FILE *file, size_t depth) // dump info for now
         display_ast(root->next, file, depth);
 }
 
-static long node_to_i(node_t *node)
+void gen_prefix(gen_t *gen, node_t *node)
 {
-        if (node->kind != NODE_INTEGER)
-                return 0;
-        return strtol(node->token.Identifier, NULL, 0);
-}
-
-void gen_binop(gen_t *gen, node_t *node)
-{
-        bool integer = false;
-        if (node->left->kind == NODE_INTEGER || node->left->kind == NODE_INTEGER)
-                integer = true;
-        else
-        {
-                gen_node(gen, node->left);
-                gen_node(gen, node->right);
-        }
-
         switch (node->token.Class)
         {
-                case LEXER_TOKEN_NOTEQ:
-                {
-                        if (integer)
-                        {
-                                long lhs = node_to_i(node->left);
-                                long rhs = node_to_i(node->right);
-                                size_t res = gen_alloc_reg(gen);
-                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs!=rhs), qword_reg_name[res]);
-                                gen_push(gen, res);
-                        }
-                        else
-                        {
-                                size_t rhs = gen_pop(gen);
-                                size_t lhs = gen_pop(gen);
-                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
-                                fprintf(gen->output, "\tsetne %%%s\n", byte_reg_name[lhs]);
-                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
-                                gen_push(gen, lhs);
-                        }
-                        break;
-                }
-                case LEXER_TOKEN_EQUALS:
-                {
-                        if (integer)
-                        {
-                                long lhs = node_to_i(node->left);
-                                long rhs = node_to_i(node->right);
-                                size_t res = gen_alloc_reg(gen);
-                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs==rhs), qword_reg_name[res]);
-                                gen_push(gen, res);
-                        }
-                        else
-                        {
-                                size_t rhs = gen_pop(gen);
-                                size_t lhs = gen_pop(gen);
-                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
-                                fprintf(gen->output, "\tsete %%%s\n", byte_reg_name[lhs]);
-                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
-                                gen_push(gen, lhs);
-                        }
-                        break;
-                }
-                case LEXER_TOKEN_LESS:
-                {
-                        if (integer)
-                        {
-                                long lhs = node_to_i(node->left);
-                                long rhs = node_to_i(node->right);
-                                size_t res = gen_alloc_reg(gen);
-                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs<rhs), qword_reg_name[res]);
-                                gen_push(gen, res);
-                        }
-                        else
-                        {
-                                size_t rhs = gen_pop(gen);
-                                size_t lhs = gen_pop(gen);
-                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
-                                fprintf(gen->output, "\tsetl %%%s\n", byte_reg_name[lhs]);
-                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
-                                gen_push(gen, lhs);
-                        }
-                        break;
-                }
-                case LEXER_TOKEN_GREATER:
-                {
-                        if (integer)
-                        {
-                                long lhs = node_to_i(node->left);
-                                long rhs = node_to_i(node->right);
-                                size_t res = gen_alloc_reg(gen);
-                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs>rhs), qword_reg_name[res]);
-                                gen_push(gen, res);
-                        }
-                        else
-                        {
-                                size_t rhs = gen_pop(gen);
-                                size_t lhs = gen_pop(gen);
-                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
-                                fprintf(gen->output, "\tsetg %%%s\n", byte_reg_name[lhs]);
-                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
-                                gen_push(gen, lhs);
-                        }
-                        break;
-                }
-                case LEXER_TOKEN_LESSEQ:
-                {
-                        if (integer)
-                        {
-                                long lhs = node_to_i(node->left);
-                                long rhs = node_to_i(node->right);
-                                size_t res = gen_alloc_reg(gen);
-                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs<=rhs), qword_reg_name[res]);
-                                gen_push(gen, res);
-                        }
-                        else
-                        {
-                                size_t rhs = gen_pop(gen);
-                                size_t lhs = gen_pop(gen);
-                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
-                                fprintf(gen->output, "\tsetle %%%s\n", byte_reg_name[lhs]);
-                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
-                                gen_push(gen, lhs);
-                        }
-                        break;
-                }
-                case LEXER_TOKEN_GREATEREQ:
-                {
-                        if (integer)
-                        {
-                                long lhs = node_to_i(node->left);
-                                long rhs = node_to_i(node->right);
-                                size_t res = gen_alloc_reg(gen);
-                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", (size_t)(lhs>=rhs), qword_reg_name[res]);
-                                gen_push(gen, res);
-                        }
-                        else
-                        {
-                                size_t rhs = gen_pop(gen);
-                                size_t lhs = gen_pop(gen);
-                                fprintf(gen->output, "\tcmpq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
-                                fprintf(gen->output, "\tsetge %%%s\n", byte_reg_name[lhs]);
-                                fprintf(gen->output, "\tmovzx %%%s, %%%s\n", byte_reg_name[lhs], qword_reg_name[lhs]);
-                                gen_push(gen, lhs);
-                        }
-                        break;
-                }
-                case LEXER_TOKEN_PLUS:
-                {
-                        if (integer)
-                        {
-                                size_t lhs = node_to_i(node->left);
-                                size_t rhs = node_to_i(node->right);
-                                size_t res = gen_alloc_reg(gen);
-                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", lhs+rhs, qword_reg_name[res]);
-                                gen_push(gen, res);
-                        }
-                        else
-                        {
-                                size_t rhs = gen_pop(gen);
-                                size_t lhs = gen_pop(gen);
-                                fprintf(gen->output, "\taddq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
-                                gen_push(gen, lhs);
-                        }
-                        break;
-                }
-                case LEXER_TOKEN_MINUS:
-                {
-                        if (integer)
-                        {
-                                size_t lhs = node_to_i(node->left);
-                                size_t rhs = node_to_i(node->right);
-                                size_t res = gen_alloc_reg(gen);
-                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", lhs-rhs, qword_reg_name[res]);
-                                gen_push(gen, res);
-                        }
-                        else
-                        {
-                                size_t rhs = gen_pop(gen);
-                                size_t lhs = gen_pop(gen);
-                                fprintf(gen->output, "\tsubq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
-                                gen_push(gen, lhs);
-                        }
-                        break;
-                }
                 case LEXER_TOKEN_ASTERISK:
                 {
-                        if (integer)
-                        {
-                                size_t lhs = node_to_i(node->left);
-                                size_t rhs = node_to_i(node->right);
-                                size_t res = gen_alloc_reg(gen);
-                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", lhs*rhs, qword_reg_name[res]);
-                                gen_push(gen, res);
-                        }
-                        else
-                        {
-                                size_t rhs = gen_pop(gen);
-                                size_t lhs = gen_pop(gen);
-                                fprintf(gen->output, "\txorq %%rdx, %%rdx\n");
-                                fprintf(gen->output, "\timulq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
-                                gen_push(gen, lhs);
-                        }
+                        gen_node(gen, node->left);
+                        size_t index = gen_pop(gen);
+                        type_t type = gen_get_type(gen, index);
+                        type = gen_deref(type);
+                        if (type.base == BASETYPE_NONE)
+                                comperror(gen->stream, node->token, "cant dereference a non pointer");
+                        fprintf(gen->output, "\tmovq (%%%s), %%%s\n", qword_reg_name[index], qword_reg_name[index]);
+                        gen_set_type(gen, index, type);
+                        gen_push(gen, index);
                         break;
                 }
-                case LEXER_TOKEN_SLASH:
-                {
-                        if (integer)
-                        {
-                                size_t lhs = node_to_i(node->left);
-                                size_t rhs = node_to_i(node->right);
-                                size_t res = gen_alloc_reg(gen);
-                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", lhs/rhs, qword_reg_name[res]);
-                                gen_push(gen, res);
-                        }
-                        else
-                        {
-                                size_t rhs = gen_pop(gen);
-                                size_t lhs = gen_pop(gen);
-                                fprintf(gen->output, "\txorq %%rdx, %%rdx\n");
-                                fprintf(gen->output, "\tidivq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
-                                gen_push(gen, lhs);
-                        }
-                        break;
-                }
-                case LEXER_TOKEN_PERCENT:
-                {
-                        if (integer)
-                        {
-                                size_t lhs = node_to_i(node->left);
-                                size_t rhs = node_to_i(node->right);
-                                size_t res = gen_alloc_reg(gen);
-                                fprintf(gen->output, "\tmovq $%ld, %%%s\n", lhs/rhs, qword_reg_name[res]);
-                                gen_push(gen, res);
-                        }
-                        else
-                        {
-                                size_t rhs = gen_pop(gen);
-                                size_t lhs = gen_pop(gen);
-                                fprintf(gen->output, "\txorq %%rdx, %%rdx\n");
-                                fprintf(gen->output, "\tidivq %%%s, %%%s\n", qword_reg_name[rhs], qword_reg_name[lhs]);
-                                fprintf(gen->output, "\tmovq %%rdx, %%%s\n", qword_reg_name[lhs]);
-                                gen_push(gen, lhs);
-                        }
-                        break;
-                }
-                default:
-                        break;
+                default: break;
         }
 }
 
 void gen_newexpr(gen_t *const gen)
 {
         while (gen->reg_idx_stack_sp > 0)
-                gen_pop(gen);
+                gen_expect(gen, type_integer);
         memset(gen->reg_alloc, 0, sizeof(gen->reg_alloc));
         memset(gen->reg_alloc_ref, 0, sizeof(gen->reg_alloc_ref));
 }
@@ -425,6 +313,12 @@ void gen_node(gen_t *gen, node_t *node)
                 gen_newexpr(gen);
         switch (node->kind)
         {
+                case NODE_PREFIX:
+                {
+                        gen_prefix(gen, node);
+                        break;
+                }
+
                 case NODE_BINOP:
                 {
                         gen_binop(gen, node);
@@ -434,7 +328,43 @@ void gen_node(gen_t *gen, node_t *node)
                 {
                         size_t index = gen_alloc_reg(gen);
                         gen_push(gen, index);
+                        gen_set_type(gen, index, type_integer);
                         fprintf(gen->output, "\tmovq $%s, %%%s\n", gen->node->token.Identifier, qword_reg_name[index]);
+                        break;
+                }
+                case NODE_CAST:
+                {
+                        gen_node(gen, node->left);
+                        gen_node(gen, node->right);
+                        type_t type = {0};
+                        if (!strncmp(node->token.Identifier, "i64", 4))
+                        {
+                                type.base = BASETYPE_INT64;
+                        }
+                        else if (!strncmp(node->token.Identifier, "i32", 4))
+                        {
+                                type.base = BASETYPE_INT32;
+                        }
+                        else if (!strncmp(node->token.Identifier, "i16", 4))
+                        {
+                                type.base = BASETYPE_INT16;
+                        }
+                        else if (!strncmp(node->token.Identifier, "i8", 3))
+                        {
+                                type.base = BASETYPE_INT8;
+                        }
+
+                        // change in future to allow multiple levels
+                        if (node->priv.size > 0)
+                        {
+                                type.levels[0].kind            = LEVEL_PTR;
+                                type.levels[0].depth_or_length = node->priv.size;
+                                type.level_count               = 1;
+                        }
+
+                        size_t index = gen_pop(gen);
+                        gen_set_type(gen, index, type);
+                        gen_push(gen, index);
                         break;
                 }
                 default:
