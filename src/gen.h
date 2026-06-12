@@ -9,37 +9,6 @@
 #define REGISTER_COUNT (8)
 #define REGISTER_STACK (32)
 
-typedef enum
-{
-        BASETYPE_NONE,
-        BASETYPE_INT64,
-        BASETYPE_INT32,
-        BASETYPE_INT16,
-        BASETYPE_INT8,
-        _BASETYPE_CNT,
-} basetype_t;
-
-typedef enum
-{
-        LEVEL_NONE,
-        LEVEL_PTR,
-        LEVEL_FUNCTION,
-        LEVEL_ARRAY,
-} type_level_form_t;
-
-typedef struct
-{
-        type_level_form_t kind;
-        size_t            depth_or_length;
-} type_level_t;
-
-typedef struct
-{
-        basetype_t   base;
-        type_level_t levels[8];
-        size_t       level_count;
-} type_t;
-
 typedef struct
 {
         symbol_table_t  sym_table[MAX_SCOPE_DEPTH];
@@ -52,6 +21,8 @@ typedef struct
         token_stream_t *stream;
         node_t         *node;
         FILE           *output;
+        bool            lea_over_deref;
+        size_t          label;
 } gen_t;
 
 void gen_to_file(token_stream_t *stream, node_t *root, FILE *file);
@@ -72,6 +43,11 @@ const char *(*gen_find_names_for(size_t size))[REGISTER_COUNT]; // lmao
 size_t gen_expect_a_or_b(gen_t *gen, type_t a, type_t b);
 void gen_check(gen_t *gen, type_t a, type_t t);
 void gen_check_a_or_b(gen_t *gen, type_t a, type_t b, type_t t);
+type_t gen_lea(type_t type);
+
+void gen_enter(gen_t *gen);
+void gen_leave(gen_t *gen);
+type_t gen_node_to_type(node_t *node);
 
 extern const type_t type_integer;
 extern const char *qword_reg_name[REGISTER_COUNT];

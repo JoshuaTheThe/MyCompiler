@@ -1,17 +1,24 @@
 	.section .text
 	.global  _start
+	.global  main
 _start:
 	andq $-16, %rsp
-	call 2f
+	call main
 	movq %rax, %rdi
 	movq $60, %rax
 	syscall
 1:	jmp 1b
-2:
-	movq $800, %rbx
-	movq $0, %rcx
-	shl $2, %rcx
-	add %rcx, %rbx
-	movq (%rbx), %rbx
+main:
+	endbr64
+	pushq %rbp
+	movq %rsp, %rbp
+	lea *main, %rbx
+	call %rbx
+	mov %rax, %rbx
 	movq %rbx, %rax
+	movq %rbp, %rsp
+	popq %rbp
+	retq
+	movq %rbp, %rsp
+	popq %rbp
 	retq

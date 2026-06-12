@@ -32,6 +32,7 @@ typedef struct node
 
         struct node *left;
         struct node *right;
+        struct node *extra;
 
         struct node *next;
 

@@ -17,20 +17,6 @@ node_t *new_node(token_t token, node_kind_t kind)
         return new;
 }
 
-node_t *parse_keyword(token_stream_t *stream)
-{
-        token_t token = *stream->Current;
-        if (stream->Current->Next->Class == LEXER_TOKEN_SEMICOLON)
-        {
-                lexer_expect(stream, LEXER_TOKEN_IDENTIFIER);
-                lexer_expect(stream, LEXER_TOKEN_SEMICOLON);
-                node_t *node  = new_node(token, NODE_DECLARATION);
-                return node;
-        }
-
-        return NULL;
-}
-
 void append_node(node_t *root, node_t *n)
 {
         for (;root->next;root=root->next);
@@ -47,6 +33,7 @@ void clean_nodes(node_t *root)
                 {
                         clean_nodes(prev->left);
                         clean_nodes(prev->right);
+                        clean_nodes(prev->extra);
                         free(prev);
                 }
 
@@ -58,6 +45,7 @@ void clean_nodes(node_t *root)
         {
                 clean_nodes(prev->left);
                 clean_nodes(prev->right);
+                clean_nodes(prev->extra);
                 free(prev);
         }
 }
@@ -68,8 +56,33 @@ node_t *parse_stmt(token_stream_t *stream)
         node_t *node = NULL;
         switch (token->Class)
         {
+                case LEXER_TOKEN_LBRACKET:
+                {
+                        node_t *block = new_node(*stream->Current, NODE_BLOCK);
+                        lexer_consume(stream);
+                        node_t *root = NULL, *curr = NULL;
+                        while (stream->Current->Class != LEXER_TOKEN_RBRACKET)
+                        {
+                                node_t *node = parse_stmt(stream);
+                                if (!root)
+                                {
+                                        root = node;
+                                        curr = root;
+                                }
+                                else if (curr)
+                                {
+                                        curr->next = node;
+                                        curr = node;
+                                }
+                        }
+
+                        lexer_consume(stream);
+                        block->left = root;
+                        return block;
+                }
                 case LEXER_TOKEN_IDENTIFIER:
-                        if ((node = parse_keyword(stream)))
+                        node = parse_keyword(stream);
+                        if (node)
                                 break;
                         goto expr;
                 default:
@@ -82,6 +95,102 @@ node_t *parse_stmt(token_stream_t *stream)
 
         return node;
 }
+
+bool parse_type(token_stream_t *stream, node_t **node)
+{
+        if (stream->Current->Class == LEXER_TOKEN_IDENTIFIER &&
+           (!strncmp(stream->Current->Identifier, "i64", 4) ||
+            !strncmp(stream->Current->Identifier, "i32", 4) ||
+            !strncmp(stream->Current->Identifier, "i16", 4) ||
+            !strncmp(stream->Current->Identifier, "i8", 4)))
+        {
+                token_t type = *lexer_consume(stream);
+                size_t depth = 0;
+                while (lexer_accept(stream, LEXER_TOKEN_ASTERISK))
+                        depth++;
+                node_t *cast    = new_node(type, NODE_CAST);
+                cast->priv.size = depth;
+                *node = cast;
+                return true;
+        }
+
+        return false;
+}
+
+node_t *parse_keyword(token_stream_t *stream)
+{
+        token_t token = *stream->Current;
+        if (stream->Current &&
+            !strncmp(stream->Current->Identifier, "let", 4))
+        {
+                // type information is inferred
+                lexer_expect(stream, LEXER_TOKEN_IDENTIFIER); // let
+                token_t name = *lexer_expect(stream, LEXER_TOKEN_IDENTIFIER); // name
+                lexer_expect(stream, LEXER_TOKEN_EQUAL);      // initial value
+                node_t *initial = parse_expr(stream);
+                lexer_expect(stream, LEXER_TOKEN_SEMICOLON);
+                node_t *node  = new_node(token, NODE_DECLARATION);
+                node->token   = name;
+                node->right   = initial;
+                return node;
+        }
+        else if (stream->Current &&
+            !strncmp(stream->Current->Identifier, "fn", 3))
+        {
+                // type information is explicit after the name of the function
+                lexer_expect(stream, LEXER_TOKEN_IDENTIFIER); // fn
+                token_t name = *lexer_expect(stream, LEXER_TOKEN_IDENTIFIER); // name
+                lexer_expect(stream, LEXER_TOKEN_LPAREN); // TODO! add argument parsing
+                lexer_expect(stream, LEXER_TOKEN_RPAREN);
+                node_t *node  = new_node(token, NODE_FUNCTION);
+                node_t *type  = NULL;
+                if (!parse_type(stream, &type))
+                {
+                        type = new_node(name, NODE_CAST); // implicit int
+                        memcpy(type->token.Identifier, "i64", 4);
+                }
+
+                node_t *body  = parse_stmt(stream);
+                node->token   = name;
+                node->left    = body;
+                node->right   = type;
+                return node;
+        }
+        else if (stream->Current &&
+            !strncmp(stream->Current->Identifier, "if", 3))
+        {
+                lexer_expect(stream, LEXER_TOKEN_IDENTIFIER); // if
+                lexer_expect(stream, LEXER_TOKEN_LPAREN);
+                node_t *expr = parse_expr(stream);
+                lexer_expect(stream, LEXER_TOKEN_RPAREN);
+                node_t *stmt = parse_stmt(stream);
+                node_t *node  = new_node(token, NODE_IF);
+                node->left    = expr;
+                node->right   = stmt; // how to store else?
+
+                if (stream->Current &&
+                    stream->Current->Class == LEXER_TOKEN_IDENTIFIER &&
+                    !strncmp(stream->Current->Identifier, "else", 5))
+                {
+                        lexer_expect(stream, LEXER_TOKEN_IDENTIFIER);
+                        node->extra = parse_stmt(stream);
+                }
+                return node;
+        }
+        else if (stream->Current &&
+            !strncmp(stream->Current->Identifier, "return", 7))
+        {
+                lexer_expect(stream, LEXER_TOKEN_IDENTIFIER); // return
+                node_t *expr = parse_expr(stream);
+                lexer_expect(stream, LEXER_TOKEN_SEMICOLON);
+                node_t *node  = new_node(token, NODE_RETURN);
+                node->left    = expr;
+                return node;
+        }
+
+        return NULL;
+}
+
 
 node_t *parse_assignment(token_stream_t *stream)
 {
@@ -208,22 +317,10 @@ node_t *parse_primary(token_stream_t *stream)
 
                 case LEXER_TOKEN_LPAREN:
                 {
-                        // cast
-                        if (stream->Current->Class == LEXER_TOKEN_IDENTIFIER &&
-                           (!strncmp(stream->Current->Identifier, "i64", 4) ||
-                            !strncmp(stream->Current->Identifier, "i32", 4) ||
-                            !strncmp(stream->Current->Identifier, "i16", 4) ||
-                            !strncmp(stream->Current->Identifier, "i8", 4)))
+                        if (parse_type(stream, &node))
                         {
-                                token_t type = *lexer_consume(stream);
-                                size_t depth = 0;
-                                while (lexer_accept(stream, LEXER_TOKEN_ASTERISK))
-                                        depth++;
                                 lexer_expect(stream, LEXER_TOKEN_RPAREN);
-                                node_t *cast    = new_node(type, NODE_CAST);
-                                cast->left      = parse_prefix(stream);
-                                cast->priv.size = depth;
-                                node = cast;
+                                node->left = parse_prefix(stream);
                                 break;
                         }
 
@@ -255,22 +352,35 @@ node_t *parse_suffix(token_stream_t *stream)
         node_t *base = parse_primary(stream);
 
         // x[y] => *(x+y)
-        while (lexer_accept(stream, LEXER_TOKEN_LSBRACKET))
+        while (lexer_accept(stream, LEXER_TOKEN_LSBRACKET) || lexer_accept(stream, LEXER_TOKEN_LPAREN))
         {
                 token_t bracket = *stream->Current->Prev;
-                node_t *index = parse_expr(stream);
-                lexer_expect(stream, LEXER_TOKEN_RSBRACKET);
+                if (bracket.Class == LEXER_TOKEN_LSBRACKET)
+                {
+                        node_t *index = parse_expr(stream);
+                        lexer_expect(stream, LEXER_TOKEN_RSBRACKET);
 
-                node_t *dereference = new_node(bracket, NODE_PREFIX);
-                dereference->token.Class = LEXER_TOKEN_ASTERISK;
+                        node_t *dereference = new_node(bracket, NODE_PREFIX);
+                        dereference->token.Class = LEXER_TOKEN_ASTERISK;
 
-                node_t *group            = new_node(bracket, NODE_GROUP);
-                group->left              = new_node(bracket, NODE_BINOP);
-                group->left->token.Class = LEXER_TOKEN_PLUS;
-                group->left->left        = base;
-                group->left->right       = index;
-                dereference->left        = group;
-                base = dereference;
+                        node_t *group            = new_node(bracket, NODE_GROUP);
+                        group->left              = new_node(bracket, NODE_BINOP);
+                        group->left->token.Class = LEXER_TOKEN_PLUS;
+                        group->left->left        = base;
+                        group->left->right       = index;
+                        dereference->left        = group;
+                        base = dereference;
+                }
+                else
+                {
+                        //node_t *arguments = parse_expr(stream);
+                        lexer_expect(stream, LEXER_TOKEN_RPAREN);
+
+                        node_t *call = new_node(bracket, NODE_SUFFIX);
+                        call->left  = base; // callee
+                        call->right = NULL;//arguments;
+                        base = call;
+                }
         }
 
         return base;

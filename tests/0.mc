@@ -1,1 +1,4 @@
-((i32 *)800)[0];
+fn main() i64
+{
+        return main();
+}

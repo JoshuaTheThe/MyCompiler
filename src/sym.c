@@ -1,15 +1,20 @@
 
 #include "sym.h"
 #include "error.h"
+#include "gen.h"
 #include "lexer.h"
 
-symbol_t *sym_find(symbol_table_t *table, token_stream_t *stream, char name[static IDENTIFIER_SIZE])
+symbol_t *sym_find(size_t scope, symbol_table_t tables[static scope], token_stream_t *stream, char name[IDENTIFIER_SIZE])
 {
-        for (size_t i = 0; i < table->count; ++i)
+        for (ssize_t t = scope; t >= 0; --t)
         {
-                if (!strncmp(table->items[i].name, name, sizeof(table->items[i].name)))
+                symbol_table_t *table = &tables[t];
+                for (size_t i = 0; i < table->count; ++i)
                 {
-                        return &table->items[i];
+                        if (!strncmp(table->items[i].name, name, sizeof(table->items[i].name)))
+                        {
+                                return &table->items[i];
+                        }
                 }
         }
 
@@ -17,11 +22,14 @@ symbol_t *sym_find(symbol_table_t *table, token_stream_t *stream, char name[stat
         return NULL;
 }
 
-symbol_t *sym_create(symbol_table_t *table, char name[static IDENTIFIER_SIZE])
+symbol_t *sym_create(symbol_table_t *table, char name[static IDENTIFIER_SIZE], type_t type)
 {
         symbol_t new = {0};
         memcpy(new.name, name, sizeof(new.name));
         da_append(table, new);
+        table->items[table->count - 1].offset = table->currentoffset;
+        table->items[table->count - 1].type   = type;
+        table->currentoffset += gen_sizeof(type);
         return &table->items[table->count-1];
 }
 

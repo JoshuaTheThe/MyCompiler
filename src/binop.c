@@ -171,7 +171,7 @@ void gen_binop(gen_t *gen, node_t *node)
         {
                 case LEXER_TOKEN_PLUS:
                 {
-                        if (gen->reg_types[lhs].level_count > 0 && gen->reg_types[lhs].levels[0].kind == LEVEL_PTR)
+                        if (gen->reg_types[lhs].level_count > 0 && gen->reg_types[lhs].levels[0].kind == LEVEL_PTR && gen_sizeof_deref(gen->reg_types[lhs]) > 1)
                         {
                                 size_t sizeof_deref = gen_sizeof_deref(gen->reg_types[lhs]);
                                 fprintf(gen->output, "\tshl $%d, %%%s\n", __builtin_ctz(sizeof_deref), (*reg_names)[rhs]);
@@ -182,7 +182,7 @@ void gen_binop(gen_t *gen, node_t *node)
                 }
                 case LEXER_TOKEN_MINUS:
                 {
-                        if (gen->reg_types[lhs].level_count > 0 && gen->reg_types[lhs].levels[0].kind == LEVEL_PTR)
+                        if (gen->reg_types[lhs].level_count > 0 && gen->reg_types[lhs].levels[0].kind == LEVEL_PTR  && gen_sizeof_deref(gen->reg_types[lhs]) > 1)
                         {
                                 size_t sizeof_deref = gen_sizeof_deref(gen->reg_types[lhs]);
                                 fprintf(gen->output, "\tshl $%d, %%%s\n", __builtin_ctz(sizeof_deref), (*reg_names)[rhs]);

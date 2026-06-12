@@ -11,10 +11,10 @@ void comperror(token_stream_t *File, token_t ReferenceToken, const char *const f
         va_start(args, fmt);
         vsnprintf(FormattedMessage, sizeof(FormattedMessage), fmt, args);
         va_end(args);
-        snprintf(ErrorBuffer, sizeof(ErrorBuffer), "%s:%ld:%ld: error: %s\n",
+        snprintf(ErrorBuffer, sizeof(ErrorBuffer), "%s:%ld:%ld: %s\n",
                 File->Identifier, ReferenceToken.Line, ReferenceToken.Column,
                 FormattedMessage);
-        printf("%s", ErrorBuffer);
+        fprintf(stderr, "%s", ErrorBuffer);
         if (ReferenceToken.Line <= File->LineCount)
         {
                 char Character = 0;
@@ -22,11 +22,11 @@ void comperror(token_stream_t *File, token_t ReferenceToken, const char *const f
                 while (Character != '\n' && Character != EOF)
                 {
                         if (Character != 0)
-                                printf("%c", Character);
+                                fprintf(stderr, "%c", Character);
                         Character = fgetc(File->fp);
                 }
 
-                printf("\n%*s^\n", (int)ReferenceToken.Column - 1, "");
+                fprintf(stderr, "\n%*s^\n", (int)ReferenceToken.Column - 1, "");
         }
 
         exit(1);
