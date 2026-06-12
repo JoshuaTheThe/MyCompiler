@@ -8,9 +8,9 @@
 #include <string.h>
 
 const char *qword_reg_name[REGISTER_COUNT] = {
+        "rax",
         "rbx",
         "rcx",
-        "rsi",
         "r8",
         "r9",
         "r10",
@@ -108,6 +108,7 @@ void gen_init(FILE *file)
         fprintf(file, "_start:\n");
         fprintf(file, "\tandq $-16, %%rsp\n");
         fprintf(file, "\tcall 2f\n");
+        fprintf(file, "\tmovq %%rax, %%rdi\n");
         fprintf(file, "\tmovq $60, %%rax\n");
         fprintf(file, "\tsyscall\n");
         fprintf(file, "1:\tjmp 1b\n");
@@ -284,7 +285,6 @@ void gen_to_file(token_stream_t *stream, node_t *root, FILE *file)
         gen.output = file;
         fprintf(file, "2:\n");
         gen_node(&gen, root);
-        fprintf(file, "\tmovq %%%s, %%rdi\n", qword_reg_name[gen_pop(&gen)]);
         fprintf(file, "\tretq\n");
         while (gen.sym_scope)
         {
