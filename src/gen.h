@@ -27,6 +27,7 @@ void gen_init(FILE *file);
 size_t gen_alloc_reg(gen_t *const gen);
 void gen_free_reg(gen_t *const gen, size_t index);
 size_t gen_pop(gen_t *const gen);
+void gen_newexpr(gen_t *const gen);
 void gen_push(gen_t *const gen, size_t index);
 void gen_node(gen_t *gen, node_t *node);
 

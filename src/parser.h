@@ -27,6 +27,7 @@ typedef struct node
 {
         token_t      token;
         node_kind_t  kind;
+        bool         stmt;
 
         struct node *left;
         struct node *right;

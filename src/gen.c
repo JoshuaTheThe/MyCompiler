@@ -249,11 +249,21 @@ void gen_binop(gen_t *gen, node_t *node)
         }
 }
 
+void gen_newexpr(gen_t *const gen)
+{
+        while (gen->reg_idx_stack_sp > 0)
+                gen_pop(gen);
+        memset(gen->reg_alloc, 0, sizeof(gen->reg_alloc));
+        memset(gen->reg_alloc_ref, 0, sizeof(gen->reg_alloc_ref));
+}
+
 void gen_node(gen_t *gen, node_t *node)
 {
         if (!node || !gen)
                 return;
         gen->node = node;
+        if (node->stmt)
+                gen_newexpr(gen);
         switch (node->kind)
         {
                 case NODE_BINOP:

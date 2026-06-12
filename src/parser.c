@@ -75,6 +75,7 @@ node_t *parse_stmt(token_stream_t *stream)
                 default:
                 expr:
                         node = parse_expr(stream);
+                        node->stmt = true;
                         lexer_expect(stream, LEXER_TOKEN_SEMICOLON);
                         break;
         }

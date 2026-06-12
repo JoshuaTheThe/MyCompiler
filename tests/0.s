@@ -11,4 +11,7 @@ _start:
 	movq $3, %rax
 	movq $3, %rbx
 	addq %rbx, %rax
+	movq $9, %rax
+	movq $6, %rbx
+	addq %rbx, %rax
 	retq
