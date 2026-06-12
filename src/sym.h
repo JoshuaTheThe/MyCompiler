@@ -30,12 +30,8 @@ typedef struct
         size_t    count, capacity;
 } symbol_table_t;
 
-symbol_t *sym_create(char name[IDENTIFIER_SIZE]);
-symbol_t *sym_find(token_stream_t *stream, char name[IDENTIFIER_SIZE]);
-void sym_clean(void);
-void sym_push(token_stream_t *stream);
-void sym_pop(token_stream_t *stream);
-symbol_table_t *sym_table(void);
-size_t sym_depth(void);
+symbol_t *sym_create(symbol_table_t *table, char name[IDENTIFIER_SIZE]);
+symbol_t *sym_find(symbol_table_t *table, token_stream_t *stream, char name[IDENTIFIER_SIZE]);
+void sym_clean(symbol_table_t *table);
 
 #endif

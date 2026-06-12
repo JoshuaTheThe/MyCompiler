@@ -2,7 +2,6 @@
 #include "parser.h"
 #include "lexer.h"
 #include "error.h"
-#include "sym.h"
 #include <error.h>
 
 node_t *new_node(token_t token, node_kind_t kind)
@@ -205,7 +204,6 @@ node_t *parse_primary(token_stream_t *stream)
                 case LEXER_TOKEN_IDENTIFIER:
                 {
                         node = new_node(token, NODE_IDENTIFIER);
-                        symbol_t *sym = sym_find(stream, token.Identifier);
                         break;
                 }
 

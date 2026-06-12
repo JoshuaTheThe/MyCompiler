@@ -1,11 +1,11 @@
 
 #include "lexer.h"
 #include "parser.h"
-#include "sym.h"
 #include "gen.h"
 
 int main(int c,char **v)
 {
+        gen_init(stdout);
         for (int i = 1; i < c; ++i)
         {
                 token_stream_t stream = lexer_create_stream(v[i]);
@@ -20,8 +20,7 @@ int main(int c,char **v)
                                 append_node(root, new);
                 }
 
-                gen_to_file(root, stdout);
-                sym_clean();
+                gen_to_file(&stream, root, stdout);
                 clean_nodes(root);
                 lexer_close_stream(stream);
         }
