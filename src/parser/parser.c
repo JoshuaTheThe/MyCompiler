@@ -1,6 +1,6 @@
 
-#include "parser.h"
-#include "lexer.h"
+#include "parser/parser.h"
+#include "lex/lexer.h"
 #include "error.h"
 #include <error.h>
 

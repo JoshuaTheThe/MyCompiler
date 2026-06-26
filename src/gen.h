@@ -2,7 +2,7 @@
 #ifndef GEN_H
 #define GEN_H
 
-#include "parser.h"
+#include "parser/parser.h"
 #include "sym.h"
 #include <stddef.h>
 

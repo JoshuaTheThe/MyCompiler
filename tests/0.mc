@@ -1,9 +1,15 @@
 
-// expr used for type, not initial value!
-let k: i64;
+let a: i64;
+let b: i64;
+
+fn add() i64
+{
+        return a + b;
+}
 
 fn main() i64
 {
-        let xyz: i64 = 32;
-        return xyz;
+        a = 2;
+        b = 3;
+        return add();
 }

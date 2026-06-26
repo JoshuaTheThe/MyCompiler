@@ -1,9 +1,9 @@
 
 #include "gen.h"
-#include "lexer.h"
+#include "lex/lexer.h"
 #include "sym.h"
-#include "parser.h"
-#include "binop.h"
+#include "parser/parser.h"
+#include "parser/binop.h"
 #include "error.h"
 #include <stdlib.h>
 #include <string.h>
@@ -481,7 +481,12 @@ void gen_node(gen_t *gen, node_t *node)
                                         fprintf(gen->output, "\tlea %ld(%%rbp), %%%s\n", sym->offset, (*reg_names)[reg]);
                                 }
                         else
-                                fprintf(gen->output, "\tlea *%s, %%%s\n", sym->name, (*reg_names)[reg]); // always lea for function
+                        {
+                                if ((sym->type.level_count > 0 && sym->type.levels[0].kind == LEVEL_FUNCTION) || gen->lea_over_deref)
+                                        fprintf(gen->output, "\tlea %s(%%rip), %%%s\n", sym->name, (*reg_names)[reg]); // always lea for function
+                                else
+                                        fprintf(gen->output, "\tmov %s(%%rip), %%%s\n", sym->name, (*reg_names)[reg]); // always lea for function
+                        }
                         break;
                 }
 
@@ -510,7 +515,7 @@ void gen_node(gen_t *gen, node_t *node)
                         size_t size  = gen_sizeof(gen->reg_types[function]);
                         const char *(*reg_names)[REGISTER_COUNT] = gen_find_names_for(size);
 
-                        fprintf(gen->output, "\tcall %%%s\n", (*reg_names)[function]);
+                        fprintf(gen->output, "\tcall *%%%s\n", (*reg_names)[function]);
                         fprintf(gen->output, "\tmov %%rax, %%%s\n", (*reg_names)[function]);
                         gen_push(gen, function);
                         gen_set_type(gen, function, gen_strip_type(gen->reg_types[function]));

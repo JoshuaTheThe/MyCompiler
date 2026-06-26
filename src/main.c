@@ -1,6 +1,7 @@
 
-#include "lexer.h"
-#include "parser.h"
+#include "lex/lexer.h"
+#include "parser/parser.h"
+#include "opt/optast.h"
 #include "gen.h"
 
 int main(int c,char **v)
@@ -20,8 +21,12 @@ int main(int c,char **v)
                                 append_node(root, new);
                 }
 
-                gen_to_file(&stream, root, stdout);
-                clean_nodes(root);
+                node_t *optast = opt_ast(root);
+                if (optast != root)
+                        clean_nodes(root);
+
+                gen_to_file(&stream, optast, stdout);
+                clean_nodes(optast);
                 lexer_close_stream(stream);
         }
 }

@@ -1,5 +1,5 @@
 
-#include "binop.h"
+#include "parser/binop.h"
 #include "gen.h"
 
 bool gen_relational(gen_t *gen, node_t *node)

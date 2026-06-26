@@ -1,5 +1,5 @@
 
-#include "lexer.h"
+#include "lex/lexer.h"
 #include <error.h>
 #include <stdarg.h>
 

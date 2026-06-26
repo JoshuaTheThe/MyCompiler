@@ -2,7 +2,7 @@
 #ifndef BINOP_H
 #define BINOP_H
 
-#include "parser.h"
+#include "parser/parser.h"
 #include "sym.h"
 #include "gen.h"
 

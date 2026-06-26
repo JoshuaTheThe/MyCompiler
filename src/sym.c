@@ -2,7 +2,7 @@
 #include "sym.h"
 #include "error.h"
 #include "gen.h"
-#include "lexer.h"
+#include "lex/lexer.h"
 
 symbol_t *sym_find(size_t scope, symbol_table_t tables[static scope], token_stream_t *stream, char name[IDENTIFIER_SIZE])
 {

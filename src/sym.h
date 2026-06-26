@@ -2,7 +2,7 @@
 #ifndef SYM_H
 #define SYM_H
 
-#include "lexer.h"
+#include "lex/lexer.h"
 
 // tsoding
 #define MAX_SCOPE_DEPTH (32)
